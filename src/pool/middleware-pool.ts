@@ -17,17 +17,18 @@ export class MiddlewarePool implements MiddlewarePoolLike {
     private readonly endpointCollections: Map<PropertyReflectionLike, MiddlewareCollection>;
 
     constructor() {
-        this.controllerCollections = $repo.newMap($descriptor.sym(FQN_PCK, 'controllerCollections'));
-        this.endpointCollections = $repo.newMap($descriptor.sym(FQN_PCK, 'endpointCollections'));
+        this.controllerCollections = $repo.newMap(FQN_PCK, 'controllerCollections');
+        this.endpointCollections = $repo.newMap(FQN_PCK, 'endpointCollections');
 
-        lifecycle.register('clear', 50, 'MiddlewarePool', () => {
-            this.controllerCollections.clear();
-            this.endpointCollections.clear();
-        });
-
-        lifecycle.register('initialize', 50, 'MiddlewarePool', () => {
+        lifecycle.onInitialize(FQN_PCK, () => {
             this.initialize();
         });
+
+        lifecycle.onClear(FQN_PCK, () => {
+            this.controllerCollections.clear();
+            this.endpointCollections.clear();
+        })
+
     }
 
     protected _initRef<R extends CoreReflectionLike>(ref: R, map: Map<R, MiddlewareCollection>): MiddlewareCollection {

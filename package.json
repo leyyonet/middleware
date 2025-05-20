@@ -56,10 +56,11 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@leyyo/call": "file:../call",
     "@leyyo/common": "file:../common",
     "@leyyo/core": "file:../core",
+    "@leyyo/injection": "file:../injection",
     "@leyyo/http": "file:../http",
+    "@leyyo/http-call": "file:../http-call",
     "body-parser": "^2.2.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
