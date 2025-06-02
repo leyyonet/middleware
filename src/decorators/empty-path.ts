@@ -1,9 +1,10 @@
 import {decoratorPool, footprint, fqnHandler} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$dev, ClassLike, Func} from "@leyyo/common";
 import {EmptyPathException} from "../errors";
 import {Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 interface O {
     ignore: boolean;
@@ -35,9 +36,9 @@ export function EmptyPath(v1?: true|Func | ClassLike): ClassDecorator {
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(EmptyPath)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited')
     .processor((ins, p) => {
         const opt = {} as O;
@@ -64,9 +65,9 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(EmptyPath)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
-            ctx.asHttp().app.get('/', (req: Req, res: Res) => {
+        scopes: ['app'],
+        apply: (opt, initialize) => {
+            initialize.app.native.get('/', (req: Req, res: Res) => {
                 if (opt.ignore) {
                     res.statusMessage = opt.statusMessage;
                     res.status(404).end();

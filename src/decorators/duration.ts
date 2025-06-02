@@ -1,9 +1,10 @@
 import e from "express";
 import {decoratorPool, footprint} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is, Dict} from "@leyyo/common";
-import {Next, Req, Res} from "@leyyo/http";
+import {Context, Next, Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 interface O {
     log?: boolean;
@@ -48,9 +49,9 @@ export function Duration(v1?: number|true, v2?: true|OnExceedLambda, v3?: true):
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(Duration)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class', 'method')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited', 'no-static')
     .processor((ins, p) => {
         const opt = {} as O;
@@ -78,26 +79,25 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(Duration)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app', 'controller', 'endpoint'],
-        apply: (opt, ctx) => {
-            const ct = ctx.asHttp();
-            if (ct.endpoint) {
-                const router = ct.endpoint.controller.router;
-                ct.endpoint.methods.forEach(m => {
+        scopes: ['app', 'controller', 'endpoint'],
+        apply: (opt, initialize) => {
+            if (initialize.endpoint) {
+                const router = initialize.endpoint.parent.router;
+                initialize.endpoint.methods.forEach(m => {
                     if (typeof router[m] === 'function') {
-                        router[m](ct.endpoint.path, (req: Req, res: Res, next: Next) =>
+                        router[m](initialize.endpoint.path, (req: Req, res: Res, next: Next) =>
                             duration(opt, req, res, next)
                         );
                     }
                 });
             }
-            else if (ct.controller) {
-                ct.controller.router.use(ct.controller.path, (req: Req, res: Res, next: Next) =>
+            else if (initialize.controller) {
+                initialize.controller.router.use((req: Req, res: Res, next: Next) =>
                     duration(opt, req, res, next)
                 );
             }
             else {
-                ct.app.use((req: Req, res: Res, next: Next) =>
+                initialize.app.native.use((req: Req, res: Res, next: Next) =>
                     duration(opt, req, res, next)
                 );
             }
@@ -124,7 +124,7 @@ function duration(opt: O, req: Req, res: Res, next: Next) {
             });
         }
     } catch (e) {
-        $dev.log(e, {path: req.$path})
+        $dev.log(e, {path: Context.fromRequest(req).path})
     }
     next();
 }
@@ -145,7 +145,7 @@ function doFulfill(req: Req, opt: O, starting: number): void {
                 (opt.onExceed as OnExceedLambdaSync)(req, diff);
             }
         } catch (error) {
-            $dev.log(error, {path: req.$path})
+            $dev.log(error, {path: Context.fromRequest(req).path})
         }
     }
     if (opt.log) {
@@ -155,7 +155,7 @@ function doFulfill(req: Req, opt: O, starting: number): void {
 
 function doLog(req: Req, opt: O, diff: number, locals: Dict) {
     if (opt.log && !locals['$duration.logged']) {
-        console.log(`${req.method}: ${req.$path} is called with ${diff}`);
+        console.log(`${req.method}: ${Context.fromRequest(req).path} is called with ${diff}`);
         locals['$duration.logged'] = true;
         locals['$logged'] = true;
     }

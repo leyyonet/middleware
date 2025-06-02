@@ -1,9 +1,10 @@
 import e from "express";
 import {decoratorPool, footprint} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is, AsyncFnc} from "@leyyo/common";
 import {Next, Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 interface O {
     requestHandler: e.RequestHandler;
@@ -37,10 +38,10 @@ export function UseAfter(requestHandler: e.RequestHandler, secure?: boolean): Cl
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(UseAfter)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class', 'method')
     .rules('no-inherited', 'no-static')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .processor((ins, p) => {
         const opt = {} as O;
         $assert.func(p.requestHandler, () => $dev.desc(ins, {field: 'requestHandler'}));
@@ -55,42 +56,41 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(UseAfter)
     })
     .metadata({
         before: false,
-        scopes: ['rest-app', 'controller', 'endpoint'],
-        apply: (opt, ctx) => {
-            const ct = ctx.asHttp();
-            if (ct.endpoint) {
-                const router = ct.endpoint.controller.router;
-                ct.endpoint.methods.forEach(m => {
+        scopes: ['app', 'controller', 'endpoint'],
+        apply: (opt, initialize) => {
+            if (initialize.endpoint) {
+                const router = initialize.endpoint.parent.router;
+                initialize.endpoint.methods.forEach(m => {
                     if (typeof router[m] === 'function') {
                         if (opt.secure) {
-                            router[m](ct.endpoint.path, (req: Req, res: Res, next: Next) =>
+                            router[m](initialize.endpoint.path, (req: Req, res: Res, next: Next) =>
                                 run(opt, req, res, next)
                             );
                         }
                         else {
-                            router[m](ct.endpoint.path, opt.requestHandler);
+                            router[m](initialize.endpoint.path, opt.requestHandler);
                         }
                     }
                 });
             }
-            else if (ct.controller) {
+            else if (initialize.controller) {
                 if (opt.secure) {
-                    ct.controller.router.use(ct.controller.path, (req: Req, res: Res, next: Next) =>
+                    initialize.controller.router.use((req: Req, res: Res, next: Next) =>
                         run(opt, req, res, next)
                     );
                 }
                 else {
-                    ct.controller.router.use(ct.controller.path, opt.requestHandler);
+                    initialize.controller.router.use(opt.requestHandler);
                 }
             }
             else {
                 if (opt.secure) {
-                    ct.app.use((req: Req, res: Res, next: Next) =>
+                    initialize.app.native.use((req: Req, res: Res, next: Next) =>
                         run(opt, req, res, next)
                     );
                 }
                 else {
-                    ct.app.use(opt.requestHandler);
+                    initialize.app.native.use(opt.requestHandler);
                 }
             }
         },

@@ -1,8 +1,9 @@
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is} from "@leyyo/common";
 import queryFn from "qs";
+import {IdMiddleware} from "../index.symbols";
 
 type O = queryFn.IParseOptions;
 
@@ -42,9 +43,9 @@ export function QueryString(opt?: queryFn.IParseOptions): ClassDecorator {
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(QueryString)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited')
     .processor((ins, p) => {
         if (!$is.empty(p.opt)) {
@@ -54,9 +55,9 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(QueryString)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
-            ctx.asHttp().app.set('query parser', (str: string) => queryFn.parse(str, opt));
+        scopes: ['app'],
+        apply: (opt, initialize) => {
+            initialize.app.native.set('query parser', (str: string) => queryFn.parse(str, opt));
         },
     })
 ;

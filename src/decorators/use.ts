@@ -1,6 +1,6 @@
 import e from "express";
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {UseBefore} from "./use-before";
 
@@ -36,6 +36,6 @@ export function Use(requestHandler: e.RequestHandler, secure?: boolean): ClassDe
 }
 
 const deco = decoratorPool.newClone<O, MdlMetadata<O>, P>(Use, UseBefore)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class', 'method')
 ;

@@ -2,33 +2,38 @@ import {
     ClassReflectionLike,
     CoreReflectionLike,
     DecoInstanceLike,
-    DecoLike, lifecycle,
-    PropertyReflectionLike, reflectionPool
+    DecoLike,
+    lifecycle,
+    PropertyReflectionLike,
+    reflectionPool,
+    Target
 } from "@leyyo/core";
-import {$assert, $descriptor, $dev, $repo, Dict} from "@leyyo/common";
-import {MdlMetadata, MiddlewareCallback, MiddlewareCollection, MiddlewarePoolLike} from "./index-types";
-import {FQN_PCK} from "../internal";
-import {MiddlewareScope, MiddlewareScopeItems} from "../literals";
-import {HttpQueue, httpSigner} from "@leyyo/http";
+import {$assert, $dev, $log, $repo, Dict} from "@leyyo/common";
+import {MdlMetadata, MiddlewareCollection, MiddlewareItem, MiddlewarePoolLike} from "./index-types";
+import {FQN} from "../internal";
+import {HttpInitialize, httpSigner, HttpTarget} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 export class MiddlewarePool implements MiddlewarePoolLike {
-
+    private logger = $log.create(MiddlewarePool);
     private readonly controllerCollections: Map<ClassReflectionLike, MiddlewareCollection>;
     private readonly endpointCollections: Map<PropertyReflectionLike, MiddlewareCollection>;
 
     constructor() {
-        this.controllerCollections = $repo.newMap(FQN_PCK, 'controllerCollections');
-        this.endpointCollections = $repo.newMap(FQN_PCK, 'endpointCollections');
+        this.controllerCollections = $repo.newMap(FQN, 'controllerCollections');
+        this.endpointCollections = $repo.newMap(FQN, 'endpointCollections');
 
-        lifecycle.onInitialize(FQN_PCK, () => {
-            this.initialize();
-        });
+        lifecycle.onAll(FQN)
+            .before('leyyo.http-api')
+            .before('leyyo.http-client');
 
-        lifecycle.onClear(FQN_PCK, () => {
-            this.controllerCollections.clear();
-            this.endpointCollections.clear();
-        })
+        lifecycle.onInitialize(FQN, () => this.initialize());
+        lifecycle.onClear(FQN, () => this._clear());
+    }
 
+    protected _clear(): void {
+        this.controllerCollections.clear();
+        this.endpointCollections.clear();
     }
 
     protected _initRef<R extends CoreReflectionLike>(ref: R, map: Map<R, MiddlewareCollection>): MiddlewareCollection {
@@ -41,7 +46,7 @@ export class MiddlewarePool implements MiddlewarePoolLike {
         return map.get(ref);
     }
 
-    addClass(ref: ClassReflectionLike, ins: DecoInstanceLike, scope: MiddlewareScope, value: any, metadata: MdlMetadata<Dict>, index: number): void {
+    addClass(ref: ClassReflectionLike, ins: DecoInstanceLike, scope: HttpTarget, value: any, metadata: MdlMetadata<Dict>, index: number): void {
         const coll = this._initRef(ref, this.controllerCollections);
         if (metadata.before) {
             coll.before.push({
@@ -71,16 +76,16 @@ export class MiddlewarePool implements MiddlewarePoolLike {
         }
     }
 
-    protected _getClassScope(ref: ClassReflectionLike): MiddlewareScope {
+    protected _getClassScope(ref: ClassReflectionLike): HttpTarget {
         if (httpSigner.is(ref.creator, 'http.app')) {
-            return 'rest-app';
+            return 'app';
         } else if (httpSigner.is(ref.creator, 'http.controller')) {
             return 'controller';
         }
         throw $dev.developerError({issue: 'middleware.can.be.assigned.to.application.or.controller'});
     }
 
-    protected _checkAllowedScope(ref: CoreReflectionLike, deco: DecoLike, scopes: Array<MiddlewareScope>, scope: MiddlewareScope) {
+    protected _checkAllowedScope(ref: CoreReflectionLike, deco: DecoLike, scopes: Array<HttpTarget>, scope: HttpTarget) {
         if (!scopes.includes(scope)) {
             throw $dev.developerError({
                 issue: 'middleware.metadata.does.not.support',
@@ -93,26 +98,30 @@ export class MiddlewarePool implements MiddlewarePoolLike {
     }
 
     initialize(): void {
+        const classScopes = ['app', 'controller', 'class'] as Array<HttpTarget | Target>;
+        const methodScopes = ['endpoint', 'method'] as Array<HttpTarget | Target>;
+        const fieldScopes = ['field'] as Array<HttpTarget | Target>;
         reflectionPool.classes()
             .forEach(clazzRef => {
                 let classChecked = false;
-                let scope: MiddlewareScope;
+                let scope: HttpTarget;
                 clazzRef.docsAll()
                     .forEach((doc, index) => {
                         const deco = doc.ins.identifier;
-                        if (deco.hasKeyword('middleware')) {
-                            const metadata = deco.getMetadata<MdlMetadata<Dict>>();
-                            $assert.boolean(metadata.before, () => $dev.desc(deco, {field: 'metadata.before'}));
-                            $assert.func(metadata.apply, () => $dev.desc(deco, {field: 'metadata.apply'}));
-                            $assert.literalArray(metadata.scopes, MiddlewareScopeItems, () => $dev.desc(deco, {field: 'metadata.scopes'}));
-                            if (!classChecked) {
-                                scope = this._getClassScope(clazzRef);
-                                this._checkAllowedScope(clazzRef, deco, metadata.scopes, scope);
-                                classChecked = true;
-                            }
-                            this.addClass(clazzRef, doc.ins, scope, doc.value, metadata, index);
+                        if (!deco.hasKeyword(IdMiddleware)) {
+                            return;
                         }
-                });
+                        const metadata = deco.getMetadata<MdlMetadata>();
+                        $assert.boolean(metadata.before, () => $dev.desc(deco, {field: 'metadata.before'}));
+                        $assert.func(metadata.apply, () => $dev.desc(deco, {field: 'metadata.apply'}));
+                        $assert.literalArray(metadata.scopes, classScopes, () => $dev.desc(deco, {field: 'metadata.scopes'}));
+                        if (!classChecked) {
+                            scope = this._getClassScope(clazzRef);
+                            this._checkAllowedScope(clazzRef, deco, metadata.scopes, scope);
+                            classChecked = true;
+                        }
+                        this.addClass(clazzRef, doc.ins, scope, doc.value, metadata, index);
+                    });
 
                 clazzRef.listInstanceProperties({kind: 'method'})
                     .forEach(prop => {
@@ -120,17 +129,18 @@ export class MiddlewarePool implements MiddlewarePoolLike {
                         prop.docsAll()
                             .forEach((doc, index) => {
                                 const deco = doc.ins.identifier;
-                                if (deco.hasKeyword('middleware')) {
-                                    const metadata = deco.getMetadata<MdlMetadata<Dict>>();
-                                    if (!propChecked) {
-                                        if (!httpSigner.isExt(clazzRef.creator, prop.name, 'methods') && httpSigner.is(prop.callable, 'http.endpoint')) {
-                                            throw $dev.developerError({issue: 'middleware.can.be.assigned.to.endpoint'});
-                                        }
-                                        this._checkAllowedScope(prop, deco, metadata.scopes, 'endpoint');
-                                        propChecked = true;
-                                    }
-                                    this.addMethod(prop, doc.ins, doc.value, metadata, index);
+                                if (!deco.hasKeyword(IdMiddleware)) {
+                                    return;
                                 }
+                                const metadata = deco.getMetadata<MdlMetadata>();
+                                if (!propChecked) {
+                                    if (!httpSigner.isExt(clazzRef.creator, prop.name, 'methods') && httpSigner.is(prop.callable, 'http.endpoint')) {
+                                        throw $dev.developerError({issue: 'middleware.can.be.assigned.to.endpoint'});
+                                    }
+                                    this._checkAllowedScope(prop, deco, metadata.scopes, 'endpoint');
+                                    propChecked = true;
+                                }
+                                this.addMethod(prop, doc.ins, doc.value, metadata, index);
                             });
                     });
 
@@ -140,37 +150,33 @@ export class MiddlewarePool implements MiddlewarePoolLike {
         // todo other for ignore warning
     }
 
+    private _bind(list: Array<MiddlewareItem>, before: boolean, initialize: HttpInitialize) {
+        list.forEach(item => {
+            try {
+                item.apply(item.value, initialize);
+                this.logger.debug(`Bound to ${before ? 'before' : 'after'} ${item.ins.description}`);
+            } catch (e) {
+                this.logger.error(` ${before ? 'before' : 'after'} ${item.ins.description}`, e);
+            }
+        });
+    }
+
     hasClass(ref: ClassReflectionLike, before: boolean): boolean {
         if (!this.controllerCollections.has(ref)) {
-          return false;
+            return false;
         }
         if (before) {
             return this.controllerCollections.get(ref).before?.length > 0;
         }
         return this.controllerCollections.get(ref).after?.length > 0;
     }
-    forClass(ref: ClassReflectionLike, before: boolean): Array<HttpQueue<MiddlewareCallback>> {
+
+    bindForClass(ref: ClassReflectionLike, before: boolean, initialize: HttpInitialize): void {
         if (!this.controllerCollections.has(ref) && this.controllerCollections.get(ref).before?.length > 0) {
-            return [];
+            return;
         }
         const coll = this.controllerCollections.get(ref);
-        const queue = [] as Array<HttpQueue<MiddlewareCallback>>;
-        if (before) {
-            coll.before.forEach(item => {
-                queue.push({
-                    index: item.index,
-                    callback: ctx => item.apply(item.value, ctx),
-                });
-            })
-        } else {
-            coll.after.forEach(item => {
-                queue.push({
-                    index: item.index,
-                    callback: ctx => item.apply(item.value, ctx),
-                });
-            })
-        }
-        return queue;
+        this._bind(before ? coll.before : coll.after, before, initialize);
     }
 
     hasMethod(ref: PropertyReflectionLike, before: boolean): boolean {
@@ -182,29 +188,15 @@ export class MiddlewarePool implements MiddlewarePoolLike {
         }
         return this.endpointCollections.get(ref).after?.length > 0;
     }
-    forMethod(ref: PropertyReflectionLike, before: boolean): Array<HttpQueue<MiddlewareCallback>> {
+
+    bindForMethod(ref: PropertyReflectionLike, before: boolean, initialize: HttpInitialize): void {
         if (!this.endpointCollections.has(ref)) {
-            return [];
+            return;
         }
         const coll = this.endpointCollections.get(ref);
-        const queue = [] as Array<HttpQueue<MiddlewareCallback>>;
-        if (before) {
-            coll.before.forEach(item => {
-                queue.push({
-                    index: item.index,
-                    callback: ctx => item.apply(item.value, ctx),
-                });
-            })
-        } else {
-            coll.after.forEach(item => {
-                queue.push({
-                    index: item.index,
-                    callback: ctx => item.apply(item.value, ctx),
-                });
-            })
-        }
-        return queue;
+        this._bind(before ? coll.before : coll.after, before, initialize);
     }
 }
+
 // noinspection JSUnusedGlobalSymbols
 export const middlewarePool: MiddlewarePoolLike = new MiddlewarePool();

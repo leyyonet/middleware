@@ -1,1 +1,1 @@
-export const FQN_PCK = 'leyyo.middleware';
+export const FQN = 'leyyo.middleware';

@@ -1,8 +1,9 @@
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is} from "@leyyo/common";
 import {Next, Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 export interface O {
     prefix?: string;
@@ -50,9 +51,9 @@ export function QueryToHeader(v1?: string|Array<string>, v2?: Array<string>): Cl
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(QueryToHeader)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited')
     .processor((ins, p) => {
         const opt = {} as O;
@@ -81,26 +82,25 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(QueryToHeader)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app', 'controller', 'endpoint'],
-        apply: (opt, ctx) => {
-            const ct = ctx.asHttp();
-            if (ct.endpoint) {
-                const router = ct.endpoint.controller.router;
-                ct.endpoint.methods.forEach(m => {
+        scopes: ['app', 'controller', 'endpoint'],
+        apply: (opt, initialize) => {
+            if (initialize.endpoint) {
+                const router = initialize.endpoint.parent.router;
+                initialize.endpoint.methods.forEach(m => {
                     if (typeof router[m] === 'function') {
-                        router[m](ct.endpoint.path, (req: Req, res: Res, next: Next) =>
+                        router[m](initialize.endpoint.path, (req: Req, res: Res, next: Next) =>
                             convert(opt, req, res, next)
                         );
                     }
                 });
             }
-            else if (ct.controller) {
-                ct.controller.router.use(ct.controller.path, (req: Req, res: Res, next: Next) =>
+            else if (initialize.controller) {
+                initialize.controller.router.use((req: Req, res: Res, next: Next) =>
                     convert(opt, req, res, next)
                 );
             }
             else {
-                ct.app.use((req: Req, res: Res, next: Next) =>
+                initialize.app.native.use((req: Req, res: Res, next: Next) =>
                     convert(opt, req, res, next)
                 );
             }

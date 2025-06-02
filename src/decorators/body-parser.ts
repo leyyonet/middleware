@@ -1,8 +1,9 @@
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {$assert, $dev, $is} from "@leyyo/common";
 import bodyFn from "body-parser";
 import {MdlMetadata} from "../pool";
+import {IdMiddleware} from "../index.symbols";
 
 type O = bodyFn.OptionsJson;
 
@@ -38,14 +39,14 @@ interface P {
  * */
 export function BodyParser(opt?: bodyFn.OptionsJson): ClassDecorator {
     return clazz =>
-        deco.process([clazz], {opt});
+        id.process([clazz], {opt});
 }
 
-const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(BodyParser)
-    .fqn(FQN_PCK)
+const id = decoratorPool.newId<O, MdlMetadata<O>, P>(BodyParser)
+    .fqn(FQN)
     .targets('class')
     .rules('no-multiple', 'no-inherited')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .processor((ins, p) => {
         if (!$is.empty(p.opt)) {
             $assert.bareObject(p.opt, () => $dev.desc(ins, {field: 'option'}));
@@ -54,10 +55,9 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(BodyParser)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
-            const ct = ctx.asHttp();
-            ct.app.use(bodyFn.json(opt));
+        scopes: ['app'],
+        apply: (opt, initialize) => {
+            initialize.app.native.use(bodyFn.json(opt));
         },
     })
 ;

@@ -1,8 +1,9 @@
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is} from "@leyyo/common";
 import bodyFn from "body-parser";
+import {IdMiddleware} from "../index.symbols";
 
 type O = bodyFn.OptionsUrlencoded;
 
@@ -42,9 +43,9 @@ export function UrlEncoded(opt?: bodyFn.OptionsUrlencoded): ClassDecorator {
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(UrlEncoded)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited')
     .processor((ins, p) => {
         if (!$is.empty(p.opt)) {
@@ -54,9 +55,9 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(UrlEncoded)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
-            ctx.asHttp().app.use(bodyFn.urlencoded(opt));
+        scopes: ['app'],
+        apply: (opt, initialize) => {
+            initialize.app.native.use(bodyFn.urlencoded(opt));
         },
     })
 ;

@@ -1,9 +1,10 @@
 import e from "express";
 import {decoratorPool, footprint} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$is, Dict} from "@leyyo/common";
 import {Next, Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 interface O {
     path: string;
@@ -42,9 +43,9 @@ export function Healthz(v1?: string|HealthCallback, v2?: HealthCallback): ClassD
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(Healthz)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-inherited', 'no-static')
     .processor((ins, p) => {
         const opt = {} as O;
@@ -63,8 +64,8 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(Healthz)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
+        scopes: ['app'],
+        apply: (opt, initialize) => {
             let fn: e.RequestHandler;
             if (opt.callback) {
                 if (opt.isAsync) {
@@ -93,7 +94,7 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(Healthz)
             }
 
             const path = opt.path ? opt.path : 'healthz';
-            ctx.asHttp().app.get(`/${path}`, fn);
+            initialize.app.native.get(`/${path}`, fn);
         },
     })
 ;

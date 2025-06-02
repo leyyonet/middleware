@@ -1,8 +1,9 @@
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is, OneOrMore} from "@leyyo/common";
 import cookieParser from "cookie-parser";
+import {IdMiddleware} from "../index.symbols";
 
 interface O {
     secrets: Array<string>;
@@ -46,14 +47,14 @@ export function CookieParser(secret?: OneOrMore<string>): ClassDecorator;
 export function CookieParser(secret: OneOrMore<string>, opt?: cookieParser.CookieParseOptions): ClassDecorator;
 export function CookieParser(v1?: OneOrMore<string> | cookieParser.CookieParseOptions, v2?: cookieParser.CookieParseOptions): ClassDecorator {
     return clazz =>
-        deco.process([clazz], {v1, v2});
+        id.process([clazz], {v1, v2});
 }
 
-const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(CookieParser)
-    .fqn(FQN_PCK)
+const id = decoratorPool.newId<O, MdlMetadata<O>, P>(CookieParser)
+    .fqn(FQN)
     .targets('class')
     .rules('no-multiple', 'no-inherited')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .processor((ins, p) => {
         const opt = {} as O;
         let givenOption: cookieParser.CookieParseOptions;
@@ -76,10 +77,9 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(CookieParser)
     })
     .metadata({
         before: true,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
-            const ct = ctx.asHttp();
-            ct.app.use(cookieParser(opt.secrets, opt.opt));
-        },
-    })
+        scopes: ['app'],
+        apply: (opt, initialize) => {
+            initialize.app.native.use(cookieParser(opt.secrets, opt.opt));
+        }
+     })
 ;

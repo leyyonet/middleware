@@ -1,8 +1,9 @@
 import {decoratorPool} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {Dict} from "@leyyo/common";
-import {Next, Req, Res} from "@leyyo/http";
+import {Context, Next, Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 type O = Dict;
 type P = Dict;
@@ -21,25 +22,22 @@ export function GeneralError(): ClassDecorator {
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(GeneralError)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited')
     .processor((ins, _p) => {
         ins.set({});
     })
     .metadata({
         before: false,
-        scopes: ['rest-app'],
-        apply: (_opt, ctx) => {
-            ctx.asHttp().app.use((error: Error, req: Req, res: Res, next: Next) => {
+        scopes: ['app'],
+        apply: (_opt, initialize) => {
+            initialize.app.native.use((error: Error, req: Req, res: Res, next: Next) => {
                 if (res.headersSent) {
                     return next(error);
                 }
-                error['path'] = req.path;
-                if (req.path !== req.$path) {
-                    error['$path'] = req.$path;
-                }
+                error['path'] = Context.fromRequest(req).path;
                 error['method'] = req.method;
                 res.statusMessage = error.name;
                 let status = error['status'] as number;

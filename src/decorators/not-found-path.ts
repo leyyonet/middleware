@@ -1,10 +1,10 @@
-import e from "express";
 import {decoratorPool, footprint, fqnHandler} from "@leyyo/core";
-import {FQN_PCK} from "../internal";
+import {FQN} from "../internal";
 import {MdlMetadata} from "../pool";
 import {$assert, $dev, $is, ClassLike, Dict, Func} from "@leyyo/common";
 import {NotFoundException} from "../errors";
-import {HttpMethod, HttpMethodItems, Req, Res} from "@leyyo/http";
+import {Context, HttpMethod, HttpMethodItems, Req, Res} from "@leyyo/http";
+import {IdMiddleware} from "../index.symbols";
 
 type IgnoreType = 'all'|'each'|'none';
 interface O {
@@ -43,9 +43,9 @@ export function NotFoundPath(v1?: Func | ClassLike|Array<string>|Record<HttpMeth
 }
 
 const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(NotFoundPath)
-    .fqn(FQN_PCK)
+    .fqn(FQN)
     .targets('class')
-    .keywords('middleware')
+    .keywords(IdMiddleware)
     .rules('no-multiple', 'no-inherited')
     .processor((ins, p) => {
         const opt = {ignoreType: 'none'} as O;
@@ -91,19 +91,19 @@ const deco = decoratorPool.newId<O, MdlMetadata<O>, P>(NotFoundPath)
     })
     .metadata({
         before: false,
-        scopes: ['rest-app'],
-        apply: (opt, ctx) => {
-            ctx.asHttp().app.use((req: Req, res: Res) => {
+        scopes: ['app'],
+        apply: (opt, initialize) => {
+            initialize.app.native.use((req: Req, res: Res) => {
                 switch (opt.ignoreType) {
                     case "all":
-                        if (opt.pathList.includes(req.$path)) {
+                        if (opt.pathList.includes(Context.fromRequest(req).path)) {
                             res.statusMessage = opt.statusMessage;
                             res.status(404).end();
                             return;
                         }
                         break;
                     case "each":
-                        if (opt.pathMap[req.method] && (opt.pathMap[req.method]).includes(req.$path)) {
+                        if (opt.pathMap[req.method] && (opt.pathMap[req.method]).includes(Context.fromRequest(req).path)) {
                             res.statusMessage = opt.statusMessage;
                             res.status(404).end();
                             return;
